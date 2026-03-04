@@ -1,96 +1,84 @@
 # API Documentation
 
-## Authentication
-Provide details on how to authenticate requests, including the required headers, authentication method, and any relevant tokens.
+## Overview
+This document provides comprehensive API documentation for the Neuroverso application. It includes endpoints for the following features:
 
-## Endpoints
+1. Sessions
+2. Observations
+3. Shorts
+4. Reports
+5. Signatures
+6. Authentication
+7. Error Codes
+8. Webhooks
 
-### Sessions
-- **GET /api/sessions**
-  - Description: Retrieve active sessions.
-  - Request Example:
-    ```json
-    {
-      "token": "your_auth_token"
-    }
-    ```
-  - Response Example:
-    ```json
-    [
-      {
-        "id": "123",
-        "user": "example_user",
-        "status": "active"
-      }
-    ]
-    ```
+## 1. Sessions
+### Endpoint: `POST /api/sessions`
+- **Description**: Create a new session.
+- **Request Body**:
+  ```json
+  {
+      "user_id": "string",
+      "session_data": "string"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+      "session_id": "string",
+      "status": "created"
+  }
+  ```
 
-### Observations
-- **POST /api/observations**
-  - Description: Create a new observation.
-  - Request Example:
-    ```json
-    {
-      "session_id": "123",
-      "data": "example_data"
-    }
-    ```
-  - Response Example:
-    ```json
-    {
-      "status": "success",
-      "id": "456"
-    }
-    ```
+### Endpoint: `GET /api/sessions/{id}`
+- **Description**: Retrieve a session by ID.
+- **Parameters**:
+  - `id`: Session ID
+- **Response**:
+  ```json
+  {
+      "session_id": "string",
+      "session_data": "string"
+  }
+  ```
 
-### Shorts
-- **GET /api/shorts**
-  - Description: Fetch short items.
-  - Response Example:
-    ```json
-    [
-      {
-        "id": "789",
-        "title": "Example Short"
-      }
-    ]
-    ```
+## 2. Observations
+### Endpoint: `POST /api/observations`
+...
 
-### Reports
-- **GET /api/reports**
-  - Description: Generate reports based on observations.
-  - Response Example:
-    ```json
-    {
-      "status": "success",
-      "report": {
-        "id": "101112",
-        "summary": "Report summary"
-      }
-    }
-    ```
+## 3. Shorts
+### Endpoint: `GET /api/shorts`
+...
 
-### GOV.BR Signature
-- **POST /api/govbr/signature**
-  - Description: Verify GOV.BR signatures.
-  - Request Example:
-    ```json
-    {
-      "data": "example_signature_data"
-    }
-    ```
-  - Response Example:
-    ```json
-    {
-      "status": "verified"
-    }
-    ```
+## 4. Reports
+### Endpoint: `GET /api/reports`
+...
 
-## Error Codes
-List common error codes that can be returned by the API, along with their meanings.
+## 5. Signatures
+### Endpoint: `POST /api/signatures`
+...
 
-## Rate Limiting
-Explain any rate limits imposed by the API and how they can impact users.
+## 6. Authentication
+### Endpoint: `POST /api/auth`
+...
 
-## Webhook Documentation
-Describe the setup and example payloads for webhooks.
+## 7. Error Codes
+- **400**: Bad Request
+- **401**: Unauthorized
+- **404**: Not Found
+- **500**: Internal Server Error
+
+## 8. Webhooks
+### Endpoint: `POST /api/webhooks`
+- **Description**: Receive webhook events.
+- **Response**:
+  ```json
+  {
+      "status": "received"
+  }
+  ```
+
+---
+
+### Note
+This documentation provides a general framework. It may be necessary to fill in further details specific to each endpoint once implementation is finalized.  
