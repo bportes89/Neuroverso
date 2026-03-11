@@ -1,0 +1,358 @@
+// Neuroverso — Prisma Schema
+// PostgreSQL 14+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  COORDINATOR
+  THERAPIST
+  OPERATOR
+  GUARDIAN
+}
+
+enum DeviceType {
+  QUEST_3
+  MICROPHONE
+  SENSOR
+}
+
+enum DeviceStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  EXECUTING
+  COMPLETED
+  CANCELLED
+  ABORTED
+}
+
+enum ProfessionalRole {
+  PRIMARY
+  VIEWER
+}
+
+enum ObservationType {
+  NOTE
+  SCALE
+  EVENT
+  INCIDENT
+}
+
+enum ReportStatus {
+  PENDING
+  PENDING_SIGNATURE
+  SIGNED
+  FAILED
+}
+
+enum SignRequestStatus {
+  PENDING
+  SIGNED
+  EXPIRED
+  FAILED
+}
+
+enum ConsentPurpose {
+  STREAMING
+  SHORTS
+  REPORT
+  DATA_RETENTION
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password_hash String
+  role          Role
+  name          String
+  active        Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Relations
+  guardian              Guardian?
+  created_protocols     Protocol[]
+  created_sessions      Session[]            @relation("SessionCreator")
+  session_professionals SessionProfessional[]
+  observations          Observation[]
+  shorts                Short[]
+  audit_logs            AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Child {
+  id                  String   @id @default(uuid())
+  name_encrypted      String
+  birth_date_encrypted String
+  diagnosis_encrypted String?
+  guardian_id         String
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  // Relations
+  guardian  Guardian   @relation(fields: [guardian_id], references: [id])
+  sessions  Session[]
+  consents  Consent[]
+
+  @@index([guardian_id])
+  @@map("children")
+}
+
+model Guardian {
+  id              String   @id @default(uuid())
+  name_encrypted  String
+  email_encrypted String
+  phone_encrypted String?
+  cpf_encrypted   String
+  relationship    String
+  user_id         String   @unique
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // Relations
+  user     User      @relation(fields: [user_id], references: [id])
+  children Child[]
+  consents Consent[]
+
+  @@index([user_id])
+  @@map("guardians")
+}
+
+model Room {
+  id         String   @id @default(uuid())
+  name       String
+  location   String?
+  capacity   Int      @default(1)
+  active     Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  // Relations
+  devices  Device[]
+  sessions Session[]
+
+  @@map("rooms")
+}
+
+model Device {
+  id            String       @id @default(uuid())
+  name          String
+  type          DeviceType
+  serial_number String       @unique
+  room_id       String?
+  status        DeviceStatus @default(AVAILABLE)
+  created_at    DateTime     @default(now())
+
+  // Relations
+  room     Room?     @relation(fields: [room_id], references: [id])
+  sessions Session[]
+
+  @@index([room_id])
+  @@index([status])
+  @@map("devices")
+}
+
+model Protocol {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  objectives       String[]
+  duration_minutes Int
+  created_by       String
+  active           Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  // Relations
+  creator  User      @relation(fields: [created_by], references: [id])
+  sessions Session[]
+
+  @@index([created_by])
+  @@map("protocols")
+}
+
+model Session {
+  id                String        @id @default(uuid())
+  child_id          String
+  room_id           String
+  device_id         String?
+  protocol_id       String?
+  scheduled_for     DateTime
+  status            SessionStatus @default(SCHEDULED)
+  consent_streaming Boolean       @default(false)
+  consent_shorts    Boolean       @default(false)
+  started_at        DateTime?
+  ended_at          DateTime?
+  created_by        String
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+
+  // Relations
+  child         Child                 @relation(fields: [child_id], references: [id])
+  room          Room                  @relation(fields: [room_id], references: [id])
+  device        Device?               @relation(fields: [device_id], references: [id])
+  protocol      Protocol?             @relation(fields: [protocol_id], references: [id])
+  creator       User                  @relation("SessionCreator", fields: [created_by], references: [id])
+  professionals SessionProfessional[]
+  observations  Observation[]
+  shorts        Short[]
+  reports       Report[]
+
+  @@index([child_id])
+  @@index([status])
+  @@index([scheduled_for])
+  @@map("sessions")
+}
+
+model SessionProfessional {
+  session_id      String
+  professional_id String
+  role            ProfessionalRole @default(VIEWER)
+
+  // Relations
+  session      Session @relation(fields: [session_id], references: [id])
+  professional User    @relation(fields: [professional_id], references: [id])
+
+  @@id([session_id, professional_id])
+  @@map("session_professionals")
+}
+
+model Observation {
+  id          String          @id @default(uuid())
+  session_id  String
+  type        ObservationType
+  content     String
+  tags        String[]
+  recorded_by String
+  created_at  DateTime        @default(now())
+
+  // Relations
+  session    Session @relation(fields: [session_id], references: [id])
+  recorder   User    @relation(fields: [recorded_by], references: [id])
+
+  @@index([session_id])
+  @@index([type])
+  @@map("observations")
+}
+
+model Short {
+  id               String   @id @default(uuid())
+  session_id       String
+  start_time       Int
+  end_time         Int
+  duration_seconds Int
+  description      String?
+  tags             String[]
+  video_url        String?
+  created_by       String
+  created_at       DateTime @default(now())
+
+  // Relations
+  session Session @relation(fields: [session_id], references: [id])
+  creator User    @relation(fields: [created_by], references: [id])
+
+  @@index([session_id])
+  @@map("shorts")
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  session_id  String
+  pdf_url     String?
+  hash_sha256 String?
+  status      ReportStatus @default(PENDING)
+  created_at  DateTime     @default(now())
+
+  // Relations
+  session      Session       @relation(fields: [session_id], references: [id])
+  sign_requests SignRequest[]
+
+  @@index([session_id])
+  @@index([status])
+  @@map("reports")
+}
+
+model SignRequest {
+  id                 String           @id @default(uuid())
+  report_id          String
+  professional_email String
+  status             SignRequestStatus @default(PENDING)
+  sign_url           String?
+  signature_token    String?
+  certificate_info   Json?
+  signed_at          DateTime?
+  expires_at         DateTime?
+  created_at         DateTime         @default(now())
+
+  // Relations
+  report Report @relation(fields: [report_id], references: [id])
+
+  @@index([report_id])
+  @@index([status])
+  @@map("sign_requests")
+}
+
+model Consent {
+  id               String         @id @default(uuid())
+  child_id         String
+  guardian_id      String
+  purpose          ConsentPurpose
+  granted          Boolean
+  description      String?
+  ip_address       String?
+  user_agent       String?
+  consent_version  String
+  granted_at       DateTime?
+  revoked_at       DateTime?
+
+  // Relations
+  child    Child    @relation(fields: [child_id], references: [id])
+  guardian Guardian @relation(fields: [guardian_id], references: [id])
+
+  @@index([child_id])
+  @@index([guardian_id])
+  @@index([purpose])
+  @@map("consents")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  user_id     String?
+  role        String?
+  action      String
+  resource    String
+  resource_id String?
+  timestamp   DateTime @default(now())
+  ip_address  String?
+  user_agent  String?
+  reason      String?
+  result      String
+  duration_ms Int?
+
+  // Relations
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([resource])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
