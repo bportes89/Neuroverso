@@ -1,6 +1,6 @@
 # Neuroverso (MVP)
 
-## Rodar local (Entregável 1 + Entregável 2 parcial)
+## Rodar local (Entregável 1 + Entregável 2)
 
 ### Pré-requisitos
 - Node.js (compatível com o projeto)
