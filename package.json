@@ -1,0 +1,18 @@
+{
+  "name": "neuroverso",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "scripts": {
+    "dev:backend": "npm -w @neuroverso/backend run dev",
+    "dev:frontend": "npm -w @neuroverso/frontend run dev",
+    "dev": "concurrently -k -n backend,frontend \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "npm -w @neuroverso/backend run build && npm -w @neuroverso/frontend run build",
+    "typecheck": "npm -w @neuroverso/backend run typecheck && npm -w @neuroverso/frontend run typecheck",
+    "test": "npm -w @neuroverso/backend run test && npm -w @neuroverso/frontend run test"
+  }
+}

@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  COORDINATOR
+  THERAPIST
+  OPERATOR
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum SessionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  FINISHED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  therapistAppointments Appointment[] @relation("TherapistAppointments")
+  sessionNotes          SessionNote[]
+  auditEvents           AuditEvent[]
+  viewerLinks           ViewerLink[]
+  shortClips            ShortClip[]
+  sessionReports        SessionReport[]
+}
+
+model Child {
+  id        String   @id @default(uuid())
+  name      String
+  birthDate DateTime?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+  devices      Device[]
+}
+
+model Device {
+  id          String   @id @default(uuid())
+  name        String
+  kind        String
+  serial      String?  @unique
+  roomId      String?
+  room        Room?    @relation(fields: [roomId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Protocol {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments Appointment[]
+}
+
+model Appointment {
+  id           String            @id @default(uuid())
+  childId      String
+  roomId       String
+  therapistId  String
+  protocolId   String?
+  startAt      DateTime
+  endAt        DateTime
+  status       AppointmentStatus @default(SCHEDULED)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  child      Child    @relation(fields: [childId], references: [id])
+  room       Room     @relation(fields: [roomId], references: [id])
+  therapist  User     @relation("TherapistAppointments", fields: [therapistId], references: [id])
+  protocol   Protocol? @relation(fields: [protocolId], references: [id])
+
+  session Session?
+  viewerLinks ViewerLink[]
+  shorts      ShortClip[]
+  reports     SessionReport[]
+
+  @@index([startAt, endAt])
+  @@index([roomId, startAt])
+  @@index([therapistId, startAt])
+}
+
+model Session {
+  id            String        @id @default(uuid())
+  appointmentId String        @unique
+  status        SessionStatus @default(NOT_STARTED)
+  startedAt     DateTime?
+  endedAt       DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  notes       SessionNote[]
+}
+
+model SessionNote {
+  id        String   @id @default(uuid())
+  sessionId String
+  authorId  String
+  text      String
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id])
+  author  User    @relation(fields: [authorId], references: [id])
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  actorId   String?
+  action    String
+  entity    String?
+  entityId  String?
+  meta      Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+}
+
+model ViewerLink {
+  id            String   @id @default(uuid())
+  token         String   @unique
+  appointmentId String
+  createdById   String?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+
+  @@index([appointmentId, expiresAt])
+}
+
+model ShortClip {
+  id            String   @id @default(uuid())
+  appointmentId String
+  createdById   String?
+  durationMs    Int
+  mimeType      String
+  storagePath   String
+  sha256        String
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+
+  @@index([appointmentId, createdAt])
+}
+
+model SessionReport {
+  id            String   @id @default(uuid())
+  appointmentId String
+  createdById   String?
+  storagePath   String
+  sha256        String
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+
+  @@index([appointmentId, createdAt])
+}
