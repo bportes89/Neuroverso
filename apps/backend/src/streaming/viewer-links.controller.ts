@@ -25,6 +25,8 @@ export class ViewerLinksController {
   @Roles("ADMIN", "COORDINATOR", "THERAPIST")
   @Post()
   async create(@Req() req: any, @Body(new ZodValidationPipe(createSchema)) body: z.infer<typeof createSchema>) {
+    const consent = await this.prisma.mediaConsent.findUnique({ where: { appointmentId: body.appointmentId }, select: { streaming: true } });
+    if (!consent?.streaming) throw new ConflictException("Sem consentimento para streaming");
     const createdById = req.user.sub as string;
     return this.viewerLinks.create({ appointmentId: body.appointmentId, createdById, ttlSeconds: body.ttlSeconds });
   }
@@ -32,12 +34,16 @@ export class ViewerLinksController {
   @Get(":token")
   async info(@Param("token") token: string) {
     const link = await this.viewerLinks.validate(token);
+    const consent = await this.prisma.mediaConsent.findUnique({ where: { appointmentId: link.appointmentId }, select: { streaming: true } });
+    if (!consent?.streaming) throw new ConflictException("Sem consentimento para streaming");
     return { appointmentId: link.appointmentId, expiresAt: link.expiresAt.toISOString() };
   }
 
   @Get(":token/livekit-token")
   async livekitToken(@Param("token") token: string) {
     const link = await this.viewerLinks.validate(token);
+    const consent = await this.prisma.mediaConsent.findUnique({ where: { appointmentId: link.appointmentId }, select: { streaming: true } });
+    if (!consent?.streaming) throw new ConflictException("Sem consentimento para streaming");
     const session = await this.prisma.session.findUnique({ where: { appointmentId: link.appointmentId }, select: { status: true } });
     if (!session || session.status !== "IN_PROGRESS") throw new ConflictException("Sessão precisa estar em andamento");
     const roomName = `appointment:${link.appointmentId}`;

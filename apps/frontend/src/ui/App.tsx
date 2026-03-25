@@ -10,6 +10,7 @@ import { ProtocolsPage } from "./pages/ProtocolsPage";
 import { SessionPage } from "./pages/SessionPage";
 import { ViewerPage } from "./pages/ViewerPage";
 import { LivePublishPage } from "./pages/LivePublishPage";
+import { SignaturesPage } from "./pages/SignaturesPage";
 import { getToken } from "../lib/auth";
 
 function RequireAuth(props: { children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export function App() {
         <Route path="rooms" element={<RoomsPage />} />
         <Route path="devices" element={<DevicesPage />} />
         <Route path="protocols" element={<ProtocolsPage />} />
+        <Route path="signatures" element={<SignaturesPage />} />
         <Route path="session/:appointmentId" element={<SessionPage />} />
         <Route path="session/:appointmentId/live" element={<LivePublishPage />} />
       </Route>

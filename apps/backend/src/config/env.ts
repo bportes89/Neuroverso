@@ -13,11 +13,18 @@ const envSchema = z.object({
   LIVEKIT_API_KEY: z.string().default(""),
   LIVEKIT_API_SECRET: z.string().default(""),
   STORAGE_DIR: z.string().default("storage"),
+  AUDIT_RETENTION_DAYS: z.coerce.number().int().positive().default(365),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().optional()
+  SMTP_FROM: z.string().optional(),
+  GOVBR_OAUTH_URL: z.string().default(""),
+  GOVBR_TOKEN_URL: z.string().default(""),
+  GOVBR_API_BASE: z.string().default(""),
+  GOVBR_CLIENT_ID: z.string().default(""),
+  GOVBR_CLIENT_SECRET: z.string().default(""),
+  GOVBR_REDIRECT_URL: z.string().default("")
 });
 
 export type Env = z.infer<typeof envSchema>;

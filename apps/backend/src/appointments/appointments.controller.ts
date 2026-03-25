@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -30,6 +30,11 @@ const rescheduleSchema = z.object({
 
 const cancelSchema = z.object({
   reason: z.string().optional()
+});
+
+const consentSchema = z.object({
+  streaming: z.boolean().optional(),
+  shorts: z.boolean().optional()
 });
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -79,5 +84,17 @@ export class AppointmentsController {
   async cancel(@Param("id") id: string, @Body(new ZodValidationPipe(cancelSchema)) body: z.infer<typeof cancelSchema>) {
     return this.appointments.cancel({ id, reason: body.reason });
   }
-}
 
+  @Roles("ADMIN", "COORDINATOR", "THERAPIST", "OPERATOR")
+  @Get(":id/consent")
+  async getConsent(@Param("id") id: string) {
+    return this.appointments.getConsent(id);
+  }
+
+  @Roles("ADMIN", "COORDINATOR", "THERAPIST")
+  @Patch(":id/consent")
+  async setConsent(@Param("id") id: string, @Req() req: any, @Body(new ZodValidationPipe(consentSchema)) body: z.infer<typeof consentSchema>) {
+    const grantedById = req.user?.sub ? String(req.user.sub) : null;
+    return this.appointments.setConsent({ appointmentId: id, ...body, grantedById });
+  }
+}
