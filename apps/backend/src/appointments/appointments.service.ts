@@ -146,6 +146,53 @@ export class AppointmentsService {
     return updated;
   }
 
+  async getConsent(appointmentId: string) {
+    const appt = await this.prisma.appointment.findUnique({ where: { id: appointmentId }, select: { id: true } });
+    if (!appt) throw new NotFoundException("Agendamento não encontrado");
+    const consent = await this.prisma.mediaConsent.findUnique({ where: { appointmentId } });
+    return {
+      appointmentId,
+      streaming: consent?.streaming ?? false,
+      shorts: consent?.shorts ?? false,
+      grantedAt: consent?.grantedAt?.toISOString() ?? null,
+      updatedAt: consent?.updatedAt?.toISOString() ?? null,
+      grantedById: consent?.grantedById ?? null
+    };
+  }
+
+  async setConsent(input: { appointmentId: string; streaming?: boolean; shorts?: boolean; grantedById?: string | null }) {
+    const appt = await this.prisma.appointment.findUnique({ where: { id: input.appointmentId }, select: { id: true } });
+    if (!appt) throw new NotFoundException("Agendamento não encontrado");
+
+    const existing = await this.prisma.mediaConsent.findUnique({ where: { appointmentId: input.appointmentId } });
+    const nextStreaming = input.streaming ?? existing?.streaming ?? false;
+    const nextShorts = input.shorts ?? existing?.shorts ?? false;
+
+    const saved = await this.prisma.mediaConsent.upsert({
+      where: { appointmentId: input.appointmentId },
+      create: {
+        appointmentId: input.appointmentId,
+        streaming: nextStreaming,
+        shorts: nextShorts,
+        grantedById: input.grantedById ?? null
+      },
+      update: {
+        streaming: nextStreaming,
+        shorts: nextShorts,
+        grantedById: input.grantedById ?? null
+      }
+    });
+
+    return {
+      appointmentId: saved.appointmentId,
+      streaming: saved.streaming,
+      shorts: saved.shorts,
+      grantedAt: saved.grantedAt.toISOString(),
+      updatedAt: saved.updatedAt.toISOString(),
+      grantedById: saved.grantedById
+    };
+  }
+
   private async ensureNoConflicts(input: {
     startAt: Date;
     endAt: Date;
@@ -170,4 +217,3 @@ export class AppointmentsService {
     if (therapistConflict) throw new ConflictException("Conflito de terapeuta no horário");
   }
 }
-

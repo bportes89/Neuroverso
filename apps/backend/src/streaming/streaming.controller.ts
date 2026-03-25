@@ -17,6 +17,8 @@ export class StreamingController {
   @Get("appointments/:appointmentId/publish-token")
   async publishToken(@Param("appointmentId") appointmentId: string, @Req() req: any) {
     const userId = req.user.sub as string;
+    const consent = await this.prisma.mediaConsent.findUnique({ where: { appointmentId }, select: { streaming: true } });
+    if (!consent?.streaming) throw new ConflictException("Sem consentimento para streaming");
     const appointment = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
       include: { therapist: { select: { id: true, name: true, email: true } }, session: true }
@@ -42,6 +44,8 @@ export class StreamingController {
   @Get("appointments/:appointmentId/subscribe-token")
   async subscribeToken(@Param("appointmentId") appointmentId: string, @Req() req: any) {
     const userId = req.user.sub as string;
+    const consent = await this.prisma.mediaConsent.findUnique({ where: { appointmentId }, select: { streaming: true } });
+    if (!consent?.streaming) throw new ConflictException("Sem consentimento para streaming");
     const appointment = await this.prisma.appointment.findUnique({ where: { id: appointmentId }, include: { session: true } });
     if (!appointment) throw new NotFoundException("Agendamento não encontrado");
     if (appointment.session?.status !== "IN_PROGRESS") throw new ConflictException("Sessão precisa estar em andamento");

@@ -18,6 +18,8 @@ import { AppController } from "./app.controller";
 import { StreamingModule } from "./streaming/streaming.module";
 import { ShortsModule } from "./shorts/shorts.module";
 import { ReportsModule } from "./reports/reports.module";
+import { SignaturesModule } from "./signatures/signatures.module";
+import { SignedUrlsModule } from "./signed-urls/signed-urls.module";
 
 @Module({
   imports: [
@@ -35,7 +37,9 @@ import { ReportsModule } from "./reports/reports.module";
     SessionsModule,
     StreamingModule,
     ShortsModule,
-    ReportsModule
+    ReportsModule,
+    SignaturesModule,
+    SignedUrlsModule
   ],
   controllers: [AppController],
   providers: [

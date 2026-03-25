@@ -1,20 +1,27 @@
-import { useMemo, useState } from "react";
-import { apiFetch, type ApiError } from "../../lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { apiFetch, getApiBaseUrl, type ApiError } from "../../lib/api";
+import { getToken } from "../../lib/auth";
 
-type SignatureRequest = {
+type SignatureStatus = "PENDING" | "SIGNED" | "DECLINED" | "EXPIRED" | "FAILED";
+
+type Signature = {
   id: string;
-  status: "created" | "pending_user" | "signed" | "rejected";
-  documentHashSha256?: string;
-  provider?: string;
+  reportId: string;
+  provider: string;
+  status: SignatureStatus;
+  signUrl?: string | null;
+  expiresAt?: string | null;
+  signedAt?: string | null;
+  signedByName?: string | null;
+  signedByDocument?: string | null;
+  sha256: string;
+  signedSha256?: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
-async function fileToBase64(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
+type InboxItem = Signature & { report?: { appointmentId: string; appointment?: { child?: { name: string } } } };
 
 function Panel(props: { title: string; children: React.ReactNode }) {
   return (
@@ -33,80 +40,140 @@ function Panel(props: { title: string; children: React.ReactNode }) {
 }
 
 export function SignaturesPage() {
-  const [documentName, setDocumentName] = useState("documento.txt");
-  const [documentText, setDocumentText] = useState("Conteúdo de exemplo do Neuroverso");
-  const [lastRequest, setLastRequest] = useState<SignatureRequest | null>(null);
+  const [searchParams] = useSearchParams();
+  const prefillReportId = useMemo(() => searchParams.get("reportId") ?? "", [searchParams]);
+
+  const [reportId, setReportId] = useState(prefillReportId);
+  const [provider, setProvider] = useState("MOCK");
+  const [signerName, setSignerName] = useState("");
+  const [signerDocument, setSignerDocument] = useState("");
+  const [signatures, setSignatures] = useState<Signature[]>([]);
+  const [pending, setPending] = useState<InboxItem[]>([]);
+  const [history, setHistory] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const objectUrlsRef = useRef<string[]>([]);
 
-  const computedBase64 = useMemo(() => btoa(unescape(encodeURIComponent(documentText))), [documentText]);
+  useEffect(() => {
+    setReportId(prefillReportId);
+  }, [prefillReportId]);
 
-  const createRequestFromText = async () => {
+  const refresh = async (id: string) => {
+    const rid = id.trim();
+    if (!rid) return;
     setError(null);
     setLoading(true);
     try {
-      const res = await apiFetch<SignatureRequest>("/signatures/request", {
-        method: "POST",
-        body: JSON.stringify({ documentName, documentBase64: computedBase64 })
+      const res = await apiFetch<Signature[]>(`/signatures/reports/${rid}`);
+      setSignatures(res);
+    } catch (err) {
+      setError((err as ApiError)?.message ?? "Falha ao listar assinaturas");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshInbox = async () => {
+    setError(null);
+    try {
+      const [p, h] = await Promise.all([
+        apiFetch<{ items: InboxItem[] }>(`/signatures?status=PENDING&limit=20`),
+        apiFetch<{ items: InboxItem[] }>(`/signatures?limit=20`)
+      ]);
+      setPending(p.items ?? []);
+      setHistory((h.items ?? []).filter((x) => x.status !== "PENDING"));
+    } catch (err) {
+      setError((err as ApiError)?.message ?? "Falha ao carregar pendências");
+    }
+  };
+
+  useEffect(() => {
+    if (!prefillReportId) return;
+    void refresh(prefillReportId).catch(() => null);
+  }, [prefillReportId]);
+
+  useEffect(() => {
+    void refreshInbox().catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const u of objectUrlsRef.current) URL.revokeObjectURL(u);
+      objectUrlsRef.current = [];
+    };
+  }, []);
+
+  const createSignature = async () => {
+    const rid = reportId.trim();
+    if (!rid) return;
+    setError(null);
+    setLoading(true);
+    try {
+      if (provider === "GOVBR") {
+        const start = await apiFetch<{ id: string; signUrl: string; expiresAt: string }>(`/signatures/reports/${rid}/start-govbr`, {
+          method: "POST",
+          body: JSON.stringify({})
+        });
+        window.location.href = start.signUrl;
+      } else {
+        await apiFetch<{ id: string }>(`/signatures/reports/${rid}`, {
+          method: "POST",
+          body: JSON.stringify({
+            provider,
+            signerName: signerName.trim() ? signerName.trim() : undefined,
+            signerDocument: signerDocument.trim() ? signerDocument.trim() : undefined
+          })
+        });
+        await refresh(rid);
+      }
+    } catch (err) {
+      setError((err as ApiError)?.message ?? "Falha ao assinar relatório");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadSignature = async (id: string) => {
+    setError(null);
+    try {
+      const apiBase = getApiBaseUrl();
+      const url = `${apiBase}/signatures/${id}/download`;
+      const token = getToken();
+      const blob = await fetch(url, { headers: token ? { authorization: `Bearer ${token}` } : {} }).then(async (r) => {
+        if (!r.ok) {
+          const ct = r.headers.get("content-type") ?? "";
+          const data = ct.includes("application/json") ? await r.json().catch(() => null) : await r.text();
+          const msg = typeof (data as any)?.message === "string" ? (data as any).message : `Erro HTTP ${r.status}`;
+          throw { status: r.status, message: msg, data } as ApiError;
+        }
+        return r.blob();
       });
-      setLastRequest(res);
+      const objectUrl = URL.createObjectURL(blob);
+      objectUrlsRef.current.push(objectUrl);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
-      setError((err as ApiError)?.message ?? "Falha ao solicitar assinatura");
-    } finally {
-      setLoading(false);
+      setError((err as ApiError)?.message ?? "Falha ao baixar assinatura");
     }
   };
 
-  const createRequestFromFile = async (file: File) => {
+  const createSecureLink = async (resource: "REPORT_PDF" | "SIGNED_REPORT_PDF" | "SIGNATURE_EVIDENCE", resourceId: string) => {
     setError(null);
-    setLoading(true);
     try {
-      const base64 = await fileToBase64(file);
-      const res = await apiFetch<SignatureRequest>("/signatures/request", {
+      const res = await apiFetch<{ url: string }>(`/signed-urls`, {
         method: "POST",
-        body: JSON.stringify({ documentName: file.name, documentBase64: base64 })
+        body: JSON.stringify({ resource, resourceId, ttlSeconds: 60 * 15 })
       });
-      setLastRequest(res);
+      window.open(res.url, "_blank", "noopener,noreferrer");
     } catch (err) {
-      setError((err as ApiError)?.message ?? "Falha ao solicitar assinatura");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const refreshStatus = async () => {
-    if (!lastRequest) return;
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await apiFetch<SignatureRequest>(`/signatures/${lastRequest.id}/status`);
-      setLastRequest((prev) => (prev ? { ...prev, ...res } : res));
-    } catch (err) {
-      setError((err as ApiError)?.message ?? "Falha ao consultar status");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const completeStub = async () => {
-    if (!lastRequest) return;
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await apiFetch<SignatureRequest>(`/signatures/${lastRequest.id}/complete`, { method: "POST" });
-      setLastRequest((prev) => (prev ? { ...prev, ...res } : res));
-    } catch (err) {
-      setError((err as ApiError)?.message ?? "Falha ao completar assinatura");
-    } finally {
-      setLoading(false);
+      setError((err as ApiError)?.message ?? "Falha ao gerar URL assinada");
     }
   };
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Assinaturas GOV.BR (stub)</h2>
-        <div style={{ opacity: 0.85 }}>Fluxo pronto para trocar pelo provedor real.</div>
+        <h2 style={{ margin: 0 }}>Assinaturas</h2>
+        <div style={{ opacity: 0.85 }}>Pendências + histórico + assinatura (MOCK/GOV.BR).</div>
       </div>
 
       {error ? (
@@ -123,13 +190,133 @@ export function SignaturesPage() {
       ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
-        <Panel title="Criar solicitação">
+        <Panel title="Assinaturas pendentes">
+          <div style={{ display: "grid", gap: 10 }}>
+            <button
+              disabled={loading}
+              onClick={() => void refreshInbox()}
+              style={{
+                justifySelf: "start",
+                border: "1px solid rgba(219,230,255,0.2)",
+                background: "rgba(219,230,255,0.08)",
+                color: "#dbe6ff",
+                padding: "8px 10px",
+                borderRadius: 12,
+                cursor: loading ? "not-allowed" : "pointer"
+              }}
+            >
+              Recarregar pendências
+            </button>
+            {pending.length === 0 ? <div style={{ opacity: 0.85 }}>Sem pendências</div> : null}
+            {pending.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  border: "1px solid rgba(219,230,255,0.12)",
+                  background: "rgba(0,0,0,0.14)",
+                  display: "grid",
+                  gap: 8
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 700 }}>{s.id}</div>
+                  <div style={{ opacity: 0.85 }}>{new Date(s.createdAt).toLocaleString()}</div>
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  Report: {s.reportId} {s.report?.appointment?.child?.name ? `• ${s.report.appointment.child.name}` : ""}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  {s.signUrl ? (
+                    <a href={s.signUrl} target="_blank" rel="noreferrer" style={{ color: "#dbe6ff" }}>
+                      Abrir assinatura
+                    </a>
+                  ) : null}
+                  <button
+                    onClick={() => void createSecureLink("REPORT_PDF", s.reportId)}
+                    style={{
+                      border: "1px solid rgba(219,230,255,0.2)",
+                      background: "rgba(219,230,255,0.08)",
+                      color: "#dbe6ff",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Link seguro (PDF)
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Histórico (últimos 20)">
+          <div style={{ display: "grid", gap: 10 }}>
+            {history.length === 0 ? <div style={{ opacity: 0.85 }}>Sem histórico</div> : null}
+            {history.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  border: "1px solid rgba(219,230,255,0.12)",
+                  background: "rgba(0,0,0,0.14)",
+                  display: "grid",
+                  gap: 8
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 700 }}>{s.id}</div>
+                  <div style={{ opacity: 0.85 }}>{new Date(s.createdAt).toLocaleString()}</div>
+                </div>
+                <div style={{ fontSize: 13, opacity: 0.9 }}>
+                  <strong>Status:</strong> {s.status} • <strong>Provedor:</strong> {s.provider}
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <button
+                    onClick={() => void createSecureLink("SIGNATURE_EVIDENCE", s.id)}
+                    style={{
+                      border: "1px solid rgba(219,230,255,0.2)",
+                      background: "rgba(219,230,255,0.08)",
+                      color: "#dbe6ff",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Link seguro (evidência)
+                  </button>
+                  {s.status === "SIGNED" ? (
+                    <button
+                      onClick={() => void createSecureLink("SIGNED_REPORT_PDF", s.id)}
+                      style={{
+                        border: "1px solid rgba(219,230,255,0.2)",
+                        background: "rgba(219,230,255,0.08)",
+                        color: "#dbe6ff",
+                        padding: "8px 10px",
+                        borderRadius: 12,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Link seguro (PKCS7)
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Assinar relatório">
           <div style={{ display: "grid", gap: 10 }}>
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, opacity: 0.9 }}>Nome do documento</span>
+              <span style={{ fontSize: 12, opacity: 0.9 }}>Report ID</span>
               <input
-                value={documentName}
-                onChange={(e) => setDocumentName(e.target.value)}
+                value={reportId}
+                onChange={(e) => setReportId(e.target.value)}
+                placeholder="UUID do SessionReport"
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
@@ -141,112 +328,189 @@ export function SignaturesPage() {
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 12, opacity: 0.9 }}>Conteúdo (texto)</span>
-              <textarea
-                value={documentText}
-                onChange={(e) => setDocumentText(e.target.value)}
-                rows={6}
+              <span style={{ fontSize: 12, opacity: 0.9 }}>Provedor</span>
+              <select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value)}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid rgba(219,230,255,0.2)",
                   background: "rgba(219,230,255,0.06)",
-                  color: "#dbe6ff",
-                  resize: "vertical"
+                  color: "#dbe6ff"
+                }}
+              >
+                <option value="MOCK">MOCK</option>
+                <option value="GOVBR">GOV.BR</option>
+              </select>
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 12, opacity: 0.9 }}>Nome do signatário (opcional)</span>
+              <input
+                value={signerName}
+                onChange={(e) => setSignerName(e.target.value)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(219,230,255,0.2)",
+                  background: "rgba(219,230,255,0.06)",
+                  color: "#dbe6ff"
                 }}
               />
             </label>
 
-            <button
-              disabled={loading}
-              onClick={() => void createRequestFromText()}
-              style={{
-                border: "1px solid rgba(219,230,255,0.2)",
-                background: "rgba(219,230,255,0.12)",
-                color: "#dbe6ff",
-                padding: "10px 12px",
-                borderRadius: 12,
-                cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: 600
-              }}
-            >
-              Solicitar assinatura
-            </button>
-
-            <div style={{ opacity: 0.85, fontSize: 13 }}>
-              Ou envie um arquivo:
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 12, opacity: 0.9 }}>Documento do signatário (opcional)</span>
               <input
-                type="file"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void createRequestFromFile(f);
+                value={signerDocument}
+                onChange={(e) => setSignerDocument(e.target.value)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(219,230,255,0.2)",
+                  background: "rgba(219,230,255,0.06)",
+                  color: "#dbe6ff"
                 }}
-                style={{ display: "block", marginTop: 8 }}
               />
+            </label>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                disabled={loading || !reportId.trim()}
+                onClick={() => void createSignature()}
+                style={{
+                  border: "1px solid rgba(219,230,255,0.2)",
+                  background: "rgba(219,230,255,0.12)",
+                  color: "#dbe6ff",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  cursor: loading || !reportId.trim() ? "not-allowed" : "pointer",
+                  fontWeight: 600
+                }}
+              >
+                {provider === "GOVBR" ? "Assinar via GOV.BR" : "Assinar (MOCK)"}
+              </button>
+              <button
+                disabled={loading || !reportId.trim()}
+                onClick={() => void refresh(reportId)}
+                style={{
+                  border: "1px solid rgba(219,230,255,0.2)",
+                  background: "rgba(219,230,255,0.08)",
+                  color: "#dbe6ff",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  cursor: loading || !reportId.trim() ? "not-allowed" : "pointer"
+                }}
+              >
+                Recarregar lista
+              </button>
             </div>
-          </div>
+        </div>
         </Panel>
 
-        <Panel title="Status">
-          {lastRequest ? (
+        <Panel title="Assinaturas do relatório">
+          {signatures.length > 0 ? (
             <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ display: "grid", gap: 6, fontSize: 13, opacity: 0.9 }}>
-                <div>
-                  <strong>ID:</strong> {lastRequest.id}
-                </div>
-                <div>
-                  <strong>Status:</strong> {lastRequest.status}
-                </div>
-                {lastRequest.provider ? (
-                  <div>
-                    <strong>Provedor:</strong> {lastRequest.provider}
-                  </div>
-                ) : null}
-                {lastRequest.documentHashSha256 ? (
-                  <div>
-                    <strong>Hash:</strong> {lastRequest.documentHashSha256}
-                  </div>
-                ) : null}
-              </div>
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  disabled={loading}
-                  onClick={() => void refreshStatus()}
+              {signatures.map((s) => (
+                <div
+                  key={s.id}
                   style={{
-                    border: "1px solid rgba(219,230,255,0.2)",
-                    background: "rgba(219,230,255,0.08)",
-                    color: "#dbe6ff",
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    cursor: loading ? "not-allowed" : "pointer"
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid rgba(219,230,255,0.12)",
+                    background: "rgba(0,0,0,0.14)",
+                    display: "grid",
+                    gap: 8
                   }}
                 >
-                  Atualizar status
-                </button>
-                <button
-                  disabled={loading || lastRequest.status === "signed"}
-                  onClick={() => void completeStub()}
-                  style={{
-                    border: "1px solid rgba(219,230,255,0.2)",
-                    background: "rgba(219,230,255,0.12)",
-                    color: "#dbe6ff",
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    cursor: loading || lastRequest.status === "signed" ? "not-allowed" : "pointer",
-                    fontWeight: 600
-                  }}
-                >
-                  Completar (stub)
-                </button>
-              </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 700 }}>{s.id}</div>
+                    <div style={{ opacity: 0.85 }}>{new Date(s.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div style={{ display: "grid", gap: 4, fontSize: 13, opacity: 0.9 }}>
+                    <div>
+                      <strong>Status:</strong> {s.status}
+                    </div>
+                    <div>
+                      <strong>Provedor:</strong> {s.provider}
+                    </div>
+                    {s.expiresAt ? (
+                      <div style={{ fontSize: 12, opacity: 0.85 }}>Expira em: {new Date(s.expiresAt).toLocaleString()}</div>
+                    ) : null}
+                    {s.signedAt ? (
+                      <div style={{ fontSize: 12, opacity: 0.85 }}>Assinado em: {new Date(s.signedAt).toLocaleString()}</div>
+                    ) : null}
+                    <div style={{ fontSize: 12, opacity: 0.85 }}>
+                      SHA-256: {s.sha256}
+                    </div>
+                    {s.signedSha256 ? <div style={{ fontSize: 12, opacity: 0.85 }}>Assinatura SHA-256: {s.signedSha256}</div> : null}
+                    {s.signedByName ? (
+                      <div style={{ fontSize: 12, opacity: 0.85 }}>
+                        Signatário: {s.signedByName}
+                        {s.signedByDocument ? ` (${s.signedByDocument})` : ""}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      disabled={loading}
+                      onClick={() => void downloadSignature(s.id)}
+                      style={{
+                        border: "1px solid rgba(219,230,255,0.2)",
+                        background: "rgba(219,230,255,0.08)",
+                        color: "#dbe6ff",
+                        padding: "8px 10px",
+                        borderRadius: 12,
+                        cursor: loading ? "not-allowed" : "pointer"
+                      }}
+                    >
+                      Baixar evidência (JSON)
+                    </button>
+                    <button
+                      disabled={loading}
+                      onClick={() => void createSecureLink("SIGNATURE_EVIDENCE", s.id)}
+                      style={{
+                        border: "1px solid rgba(219,230,255,0.2)",
+                        background: "rgba(219,230,255,0.08)",
+                        color: "#dbe6ff",
+                        padding: "8px 10px",
+                        borderRadius: 12,
+                        cursor: loading ? "not-allowed" : "pointer"
+                      }}
+                    >
+                      Link seguro (evidência)
+                    </button>
+                    {s.status === "SIGNED" ? (
+                      <button
+                        disabled={loading}
+                        onClick={() => void createSecureLink("SIGNED_REPORT_PDF", s.id)}
+                        style={{
+                          border: "1px solid rgba(219,230,255,0.2)",
+                          background: "rgba(219,230,255,0.08)",
+                          color: "#dbe6ff",
+                          padding: "8px 10px",
+                          borderRadius: 12,
+                          cursor: loading ? "not-allowed" : "pointer"
+                        }}
+                      >
+                        Link seguro (PKCS7)
+                      </button>
+                    ) : null}
+                    {s.signUrl && s.status === "PENDING" ? (
+                      <a href={s.signUrl} target="_blank" rel="noreferrer" style={{ color: "#dbe6ff", alignSelf: "center" }}>
+                        Abrir assinatura
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
-            <div style={{ opacity: 0.85 }}>Crie uma solicitação para acompanhar o status.</div>
+            <div style={{ opacity: 0.85 }}>Informe um Report ID e carregue/assine para ver as evidências.</div>
           )}
         </Panel>
       </div>
     </div>
   );
 }
-

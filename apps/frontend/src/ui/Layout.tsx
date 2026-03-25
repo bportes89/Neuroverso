@@ -53,6 +53,9 @@ export function Layout() {
           <NavLink to="/protocols" style={({ isActive }) => navLinkStyle(isActive)}>
             Protocolos
           </NavLink>
+          <NavLink to="/signatures" style={({ isActive }) => navLinkStyle(isActive)}>
+            Assinaturas
+          </NavLink>
         </nav>
         <button
           onClick={() => {

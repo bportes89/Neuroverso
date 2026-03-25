@@ -46,23 +46,28 @@ export function SessionPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [noteText, setNoteText] = useState("");
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [reportId, setReportId] = useState<string | null>(null);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportSha256, setReportSha256] = useState<string | null>(null);
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [shorts, setShorts] = useState<Short[]>([]);
   const [shortObjectUrls, setShortObjectUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
+  const [consent, setConsent] = useState<{ streaming: boolean; shorts: boolean } | null>(null);
 
   const title = useMemo(() => (session ? `Sessão • ${session.appointment.child.name}` : "Sessão"), [session]);
 
   const refresh = async () => {
-    const [res, s] = await Promise.all([
+    const [res, s, c] = await Promise.all([
       apiFetch<Session>(`/sessions/${appointmentId}`),
-      apiFetch<Short[]>(`/appointments/${appointmentId}/shorts`).catch(() => [])
+      apiFetch<Short[]>(`/appointments/${appointmentId}/shorts`).catch(() => []),
+      apiFetch<{ appointmentId: string; streaming: boolean; shorts: boolean }>(`/appointments/${appointmentId}/consent`).catch(() => null)
     ]);
     setSession(res);
     setShorts(s);
+    setConsent(c ? { streaming: c.streaming, shorts: c.shorts } : { streaming: false, shorts: false });
   };
 
   useEffect(() => {
@@ -78,6 +83,22 @@ export function SessionPage() {
       await refresh();
     } catch (err) {
       setError((err as ApiError)?.message ?? "Falha ao iniciar sessão");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setConsentFlag = async (key: "streaming" | "shorts", value: boolean) => {
+    setError(null);
+    setLoading(true);
+    try {
+      await apiFetch(`/appointments/${appointmentId}/consent`, {
+        method: "PATCH",
+        body: JSON.stringify({ [key]: value })
+      });
+      await refresh();
+    } catch (err) {
+      setError((err as ApiError)?.message ?? "Falha ao atualizar consentimento");
     } finally {
       setLoading(false);
     }
@@ -119,6 +140,7 @@ export function SessionPage() {
         method: "POST",
         body: JSON.stringify({})
       });
+      setReportId(res.reportId);
       const apiBase = getApiBaseUrl();
       const url = `${apiBase}/reports/${res.reportId}/download`;
       const token = getToken();
@@ -135,9 +157,27 @@ export function SessionPage() {
       objectUrlsRef.current.push(objectUrl);
       setReportUrl(objectUrl);
       setReportSha256(res.sha256);
+      setSignatureUrl(null);
       window.open(objectUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
       setError((err as ApiError)?.message ?? "Falha ao gerar relatório");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signLastReport = async () => {
+    if (!reportId) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const start = await apiFetch<{ id: string; signUrl: string; expiresAt: string }>(`/signatures/reports/${reportId}/start-govbr`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      window.open(start.signUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError((err as ApiError)?.message ?? "Falha ao assinar relatório");
     } finally {
       setLoading(false);
     }
@@ -355,6 +395,34 @@ export function SessionPage() {
                       </a>
                     </div>
                     {reportSha256 ? <div style={{ fontSize: 12, opacity: 0.85 }}>SHA-256: {reportSha256}</div> : null}
+                    {reportId ? <div style={{ fontSize: 12, opacity: 0.85 }}>Report ID: {reportId}</div> : null}
+                    {reportId ? (
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                        <button
+                          disabled={loading}
+                          onClick={() => void signLastReport()}
+                          style={{
+                            border: "1px solid rgba(219,230,255,0.2)",
+                            background: "rgba(219,230,255,0.08)",
+                            color: "#dbe6ff",
+                            padding: "8px 10px",
+                            borderRadius: 12,
+                            cursor: loading ? "not-allowed" : "pointer",
+                            justifySelf: "start"
+                          }}
+                        >
+                          Assinar via GOV.BR
+                        </button>
+                        <Link to={`/signatures?reportId=${reportId}`} style={{ color: "#dbe6ff" }}>
+                          Ver assinaturas
+                        </Link>
+                      </div>
+                    ) : null}
+                    {signatureUrl ? (
+                      <a href={signatureUrl} target="_blank" rel="noreferrer" style={{ color: "#dbe6ff" }}>
+                        Abrir evidência da assinatura (JSON)
+                      </a>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -362,6 +430,44 @@ export function SessionPage() {
           ) : (
             <div style={{ opacity: 0.85 }}>Carregando...</div>
           )}
+        </Panel>
+
+        <Panel title="LGPD • Consentimentos de mídia">
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>
+              Streaming controla geração de tokens de transmissão. Shorts controla listagem e download de clipes.
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                disabled={loading}
+                onClick={() => void setConsentFlag("streaming", !(consent?.streaming ?? false))}
+                style={{
+                  border: "1px solid rgba(219,230,255,0.2)",
+                  background: (consent?.streaming ?? false) ? "rgba(50,200,120,0.2)" : "rgba(219,230,255,0.06)",
+                  color: "#dbe6ff",
+                  padding: "8px 10px",
+                  borderRadius: 12,
+                  cursor: loading ? "not-allowed" : "pointer"
+                }}
+              >
+                Streaming: {(consent?.streaming ?? false) ? "Permitido" : "Bloqueado"}
+              </button>
+              <button
+                disabled={loading}
+                onClick={() => void setConsentFlag("shorts", !(consent?.shorts ?? false))}
+                style={{
+                  border: "1px solid rgba(219,230,255,0.2)",
+                  background: (consent?.shorts ?? false) ? "rgba(50,200,120,0.2)" : "rgba(219,230,255,0.06)",
+                  color: "#dbe6ff",
+                  padding: "8px 10px",
+                  borderRadius: 12,
+                  cursor: loading ? "not-allowed" : "pointer"
+                }}
+              >
+                Shorts: {(consent?.shorts ?? false) ? "Permitido" : "Bloqueado"}
+              </button>
+            </div>
+          </div>
         </Panel>
 
         <Panel title="Shorts">
