@@ -30,7 +30,7 @@ export class StreamingController {
     }
 
     const roomName = `appointment:${appointment.id}`;
-    const jwt = this.livekit.createToken({
+    const jwt = await this.livekit.createToken({
       identity: `publisher:${userId}`,
       name: appointment.therapist.name,
       roomName,
@@ -51,7 +51,7 @@ export class StreamingController {
     if (appointment.session?.status !== "IN_PROGRESS") throw new ConflictException("Sessão precisa estar em andamento");
 
     const roomName = `appointment:${appointment.id}`;
-    const jwt = this.livekit.createToken({
+    const jwt = await this.livekit.createToken({
       identity: `staff:${userId}`,
       roomName,
       ttlSeconds: 60 * 30,

@@ -12,7 +12,7 @@ export class LivekitService {
     return this.env.LIVEKIT_URL;
   }
 
-  createToken(input: { identity: string; name?: string; roomName: string; grant: VideoGrant; ttlSeconds: number }) {
+  async createToken(input: { identity: string; name?: string; roomName: string; grant: VideoGrant; ttlSeconds: number }) {
     if (!this.env.LIVEKIT_API_KEY || !this.env.LIVEKIT_API_SECRET) {
       throw new ServiceUnavailableException("LIVEKIT_API_KEY/LIVEKIT_API_SECRET não configurados");
     }
@@ -22,7 +22,6 @@ export class LivekitService {
       ttl: input.ttlSeconds
     });
     token.addGrant({ ...input.grant, room: input.roomName });
-    return token.toJwt();
+    return await token.toJwt();
   }
 }
-

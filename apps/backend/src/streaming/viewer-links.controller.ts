@@ -47,7 +47,7 @@ export class ViewerLinksController {
     const session = await this.prisma.session.findUnique({ where: { appointmentId: link.appointmentId }, select: { status: true } });
     if (!session || session.status !== "IN_PROGRESS") throw new ConflictException("Sessão precisa estar em andamento");
     const roomName = `appointment:${link.appointmentId}`;
-    const jwt = this.livekit.createToken({
+    const jwt = await this.livekit.createToken({
       identity: `viewer:${token}`,
       roomName,
       ttlSeconds: Math.max(30, Math.floor((link.expiresAt.getTime() - Date.now()) / 1000)),
