@@ -276,6 +276,19 @@ export function SignaturesPage() {
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                   <button
+                    onClick={() => void createSecureLink("REPORT_PDF", s.reportId)}
+                    style={{
+                      border: "1px solid rgba(219,230,255,0.2)",
+                      background: "rgba(219,230,255,0.08)",
+                      color: "#dbe6ff",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Link seguro (PDF)
+                  </button>
+                  <button
                     onClick={() => void createSecureLink("SIGNATURE_EVIDENCE", s.id)}
                     style={{
                       border: "1px solid rgba(219,230,255,0.2)",
