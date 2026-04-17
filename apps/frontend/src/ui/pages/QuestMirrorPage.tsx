@@ -32,6 +32,13 @@ function actionButtonStyle(disabled: boolean, emphasis: "primary" | "secondary" 
   };
 }
 
+function handleDisabledClick(disabled: boolean, action: () => void) {
+  return () => {
+    if (disabled) return;
+    action();
+  };
+}
+
 function Panel(props: { title: string; children: React.ReactNode }) {
   return (
     <div
@@ -191,9 +198,10 @@ export function QuestMirrorPage() {
                 const disabled = roomState === "connecting" || roomState === "connected" || info.sessionStatus !== "IN_PROGRESS";
                 return (
               <button
-                disabled={disabled}
-                onClick={() => void connect()}
+                aria-disabled={disabled}
+                onClick={handleDisabledClick(disabled, () => void connect())}
                 style={actionButtonStyle(disabled, "primary")}
+                title={disabled ? "Disponivel apenas quando a sessao estiver em andamento e sem conexao ativa" : undefined}
               >
                 Entrar no espelhamento
               </button>
@@ -203,9 +211,10 @@ export function QuestMirrorPage() {
                 const disabled = roomState !== "connected";
                 return (
               <button
-                disabled={disabled}
-                onClick={disconnect}
+                aria-disabled={disabled}
+                onClick={handleDisabledClick(disabled, disconnect)}
                 style={actionButtonStyle(disabled)}
+                title={disabled ? "Disponivel somente com conexao ativa" : undefined}
               >
                 Sair
               </button>
@@ -232,9 +241,10 @@ export function QuestMirrorPage() {
               const disabled = roomState !== "connected";
               return (
             <button
-              onClick={() => void toggleMute()}
-              disabled={disabled}
+              onClick={handleDisabledClick(disabled, () => void toggleMute())}
+              aria-disabled={disabled}
               style={actionButtonStyle(disabled)}
+              title={disabled ? "Disponivel somente com conexao ativa" : undefined}
             >
               {muted ? "Ativar microfone" : "Mutar microfone"}
             </button>
@@ -244,9 +254,10 @@ export function QuestMirrorPage() {
               const disabled = roomState !== "connected";
               return (
             <button
-              onClick={() => void toggleCamera()}
-              disabled={disabled}
+              onClick={handleDisabledClick(disabled, () => void toggleCamera())}
+              aria-disabled={disabled}
               style={actionButtonStyle(disabled)}
+              title={disabled ? "Disponivel somente com conexao ativa" : undefined}
             >
               {cameraOff ? "Ligar câmera" : "Desligar câmera"}
             </button>
