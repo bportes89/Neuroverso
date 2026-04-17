@@ -16,19 +16,30 @@ type MirrorInfo = {
 type MirrorTokenResponse = { url: string; token: string; roomName: string };
 
 function actionButtonStyle(disabled: boolean, emphasis: "primary" | "secondary" = "secondary") {
+  const primary = emphasis === "primary";
   return {
-    border: disabled ? "1px solid rgba(150,170,210,0.45)" : "1px solid rgba(219,230,255,0.2)",
+    border: disabled
+      ? primary
+        ? "1px solid rgba(59, 130, 246, 0.7)"
+        : "1px solid rgba(148, 163, 184, 0.75)"
+      : primary
+        ? "1px solid #2563eb"
+        : "1px solid #475569",
     background: disabled
-      ? "rgba(24,32,52,0.9)"
-      : emphasis === "primary"
-        ? "rgba(219,230,255,0.14)"
-        : "rgba(219,230,255,0.08)",
-    color: disabled ? "rgba(235,242,255,0.82)" : "#dbe6ff",
+      ? primary
+        ? "#1d4ed8"
+        : "#334155"
+      : primary
+        ? "#2563eb"
+        : "#1e293b",
+    color: "#f8fafc",
     padding: "10px 12px",
     borderRadius: 12,
     cursor: disabled ? "not-allowed" : "pointer",
-    fontWeight: emphasis === "primary" ? 600 : 500,
-    opacity: 1 as const
+    fontWeight: primary ? 700 : 600,
+    opacity: 1 as const,
+    boxShadow: disabled ? "none" : primary ? "0 0 0 1px rgba(37, 99, 235, 0.15)" : "none",
+    WebkitTextFillColor: "#f8fafc"
   };
 }
 
