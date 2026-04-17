@@ -15,6 +15,23 @@ type MirrorInfo = {
 
 type MirrorTokenResponse = { url: string; token: string; roomName: string };
 
+function actionButtonStyle(disabled: boolean, emphasis: "primary" | "secondary" = "secondary") {
+  return {
+    border: disabled ? "1px solid rgba(150,170,210,0.45)" : "1px solid rgba(219,230,255,0.2)",
+    background: disabled
+      ? "rgba(24,32,52,0.9)"
+      : emphasis === "primary"
+        ? "rgba(219,230,255,0.14)"
+        : "rgba(219,230,255,0.08)",
+    color: disabled ? "rgba(235,242,255,0.82)" : "#dbe6ff",
+    padding: "10px 12px",
+    borderRadius: 12,
+    cursor: disabled ? "not-allowed" : "pointer",
+    fontWeight: emphasis === "primary" ? 600 : 500,
+    opacity: 1 as const
+  };
+}
+
 function Panel(props: { title: string; children: React.ReactNode }) {
   return (
     <div
@@ -170,35 +187,30 @@ export function QuestMirrorPage() {
               Esta primeira versão usa a captura de câmera e microfone do navegador do Meta Quest. O espelhamento nativo de apps imersivos do Quest ainda exige integração específica fora do navegador.
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+              {(() => {
+                const disabled = roomState === "connecting" || roomState === "connected" || info.sessionStatus !== "IN_PROGRESS";
+                return (
               <button
-                disabled={roomState === "connecting" || roomState === "connected" || info.sessionStatus !== "IN_PROGRESS"}
+                disabled={disabled}
                 onClick={() => void connect()}
-                style={{
-                  border: "1px solid rgba(219,230,255,0.2)",
-                  background: "rgba(219,230,255,0.12)",
-                  color: "#dbe6ff",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  cursor: roomState === "connecting" || roomState === "connected" || info.sessionStatus !== "IN_PROGRESS" ? "not-allowed" : "pointer",
-                  fontWeight: 600
-                }}
+                style={actionButtonStyle(disabled, "primary")}
               >
                 Entrar no espelhamento
               </button>
+                );
+              })()}
+              {(() => {
+                const disabled = roomState !== "connected";
+                return (
               <button
-                disabled={roomState !== "connected"}
+                disabled={disabled}
                 onClick={disconnect}
-                style={{
-                  border: "1px solid rgba(219,230,255,0.2)",
-                  background: "rgba(219,230,255,0.08)",
-                  color: "#dbe6ff",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  cursor: roomState !== "connected" ? "not-allowed" : "pointer"
-                }}
+                style={actionButtonStyle(disabled)}
               >
                 Sair
               </button>
+                );
+              })()}
             </div>
           </div>
         ) : (
@@ -216,34 +228,30 @@ export function QuestMirrorPage() {
             style={{ width: "100%", borderRadius: 14, background: "rgba(0,0,0,0.35)" }}
           />
           <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+            {(() => {
+              const disabled = roomState !== "connected";
+              return (
             <button
               onClick={() => void toggleMute()}
-              disabled={roomState !== "connected"}
-              style={{
-                border: "1px solid rgba(219,230,255,0.2)",
-                background: "rgba(219,230,255,0.08)",
-                color: "#dbe6ff",
-                padding: "10px 12px",
-                borderRadius: 12,
-                cursor: roomState !== "connected" ? "not-allowed" : "pointer"
-              }}
+              disabled={disabled}
+              style={actionButtonStyle(disabled)}
             >
               {muted ? "Ativar microfone" : "Mutar microfone"}
             </button>
+              );
+            })()}
+            {(() => {
+              const disabled = roomState !== "connected";
+              return (
             <button
               onClick={() => void toggleCamera()}
-              disabled={roomState !== "connected"}
-              style={{
-                border: "1px solid rgba(219,230,255,0.2)",
-                background: "rgba(219,230,255,0.08)",
-                color: "#dbe6ff",
-                padding: "10px 12px",
-                borderRadius: 12,
-                cursor: roomState !== "connected" ? "not-allowed" : "pointer"
-              }}
+              disabled={disabled}
+              style={actionButtonStyle(disabled)}
             >
               {cameraOff ? "Ligar câmera" : "Desligar câmera"}
             </button>
+              );
+            })()}
           </div>
         </Panel>
 
