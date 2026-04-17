@@ -10,6 +10,7 @@ import { ProtocolsPage } from "./pages/ProtocolsPage";
 import { SessionPage } from "./pages/SessionPage";
 import { ViewerPage } from "./pages/ViewerPage";
 import { LivePublishPage } from "./pages/LivePublishPage";
+import { QuestMirrorPage } from "./pages/QuestMirrorPage";
 import { SignaturesPage } from "./pages/SignaturesPage";
 import { getToken } from "../lib/auth";
 
@@ -24,6 +25,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/viewer/:token" element={<ViewerPage />} />
+      <Route path="/quest/:token" element={<QuestMirrorPage />} />
       <Route
         path="/"
         element={

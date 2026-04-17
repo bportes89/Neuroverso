@@ -22,6 +22,8 @@ type Session = {
 };
 
 type Short = { id: string; durationMs: number; mimeType: string; sha256: string; createdAt: string };
+type Device = { id: string; name: string; kind: string; roomId?: string | null };
+type DeviceMirrorLink = { token: string; expiresAt: string; appointmentId: string; roomName: string; deviceName: string };
 
 function Panel(props: { title: string; children: React.ReactNode }) {
   return (
@@ -46,11 +48,14 @@ export function SessionPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [noteText, setNoteText] = useState("");
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [questUrl, setQuestUrl] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [reportSha256, setReportSha256] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [shorts, setShorts] = useState<Short[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [shortObjectUrls, setShortObjectUrls] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,13 +65,15 @@ export function SessionPage() {
   const title = useMemo(() => (session ? `Sessão • ${session.appointment.child.name}` : "Sessão"), [session]);
 
   const refresh = async () => {
-    const [res, s, c] = await Promise.all([
+    const [res, s, c, d] = await Promise.all([
       apiFetch<Session>(`/sessions/${appointmentId}`),
       apiFetch<Short[]>(`/appointments/${appointmentId}/shorts`).catch(() => []),
-      apiFetch<{ appointmentId: string; streaming: boolean; shorts: boolean }>(`/appointments/${appointmentId}/consent`).catch(() => null)
+      apiFetch<{ appointmentId: string; streaming: boolean; shorts: boolean }>(`/appointments/${appointmentId}/consent`).catch(() => null),
+      apiFetch<Device[]>("/devices").catch(() => [])
     ]);
     setSession(res);
     setShorts(s);
+    setDevices(d);
     setConsent(c ? { streaming: c.streaming, shorts: c.shorts } : { streaming: false, shorts: false });
   };
 
@@ -231,6 +238,36 @@ export function SessionPage() {
     }
   };
 
+  const createQuestLink = async () => {
+    if (!selectedDeviceId) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await apiFetch<DeviceMirrorLink>("/device-mirror-links", {
+        method: "POST",
+        body: JSON.stringify({ appointmentId, deviceId: selectedDeviceId, ttlSeconds: 60 * 30 })
+      });
+      setQuestUrl(`${window.location.origin}/quest/${res.token}`);
+    } catch (err) {
+      setError((err as ApiError)?.message ?? "Falha ao criar link do Meta Quest");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const roomDevices = session ? devices.filter((d) => !d.roomId || d.roomId === session.appointment.room.id) : [];
+
+  useEffect(() => {
+    if (!roomDevices.length) {
+      setSelectedDeviceId("");
+      return;
+    }
+    if (!roomDevices.some((d) => d.id === selectedDeviceId)) {
+      const preferred = roomDevices.find((d) => /quest|vr/i.test(d.kind) || /quest/i.test(d.name));
+      setSelectedDeviceId((preferred ?? roomDevices[0]).id);
+    }
+  }, [roomDevices, selectedDeviceId]);
+
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -347,6 +384,76 @@ export function SessionPage() {
                   </div>
                 </div>
               ) : null}
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 10,
+                  borderRadius: 12,
+                  border: "1px solid rgba(219,230,255,0.14)",
+                  background: "rgba(0,0,0,0.14)",
+                  display: "grid",
+                  gap: 8
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Meta Quest</div>
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  Gere um link seguro para abrir no navegador do Quest e entrar na transmissão como dispositivo.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+                  <select
+                    value={selectedDeviceId}
+                    onChange={(e) => setSelectedDeviceId(e.target.value)}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(219,230,255,0.2)",
+                      background: "rgba(219,230,255,0.06)",
+                      color: "#dbe6ff"
+                    }}
+                  >
+                    {roomDevices.length === 0 ? <option value="">Nenhum dispositivo da sala</option> : null}
+                    {roomDevices.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.name} • {device.kind}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    disabled={loading || !selectedDeviceId || session.status !== "IN_PROGRESS"}
+                    onClick={() => void createQuestLink()}
+                    style={{
+                      border: "1px solid rgba(219,230,255,0.2)",
+                      background: "rgba(219,230,255,0.08)",
+                      color: "#dbe6ff",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      cursor: loading || !selectedDeviceId || session.status !== "IN_PROGRESS" ? "not-allowed" : "pointer"
+                    }}
+                  >
+                    Gerar link do Meta Quest
+                  </button>
+                </div>
+                {questUrl ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <a href={questUrl} target="_blank" rel="noreferrer" style={{ color: "#dbe6ff", wordBreak: "break-all" }}>
+                      {questUrl}
+                    </a>
+                    <button
+                      onClick={() => void navigator.clipboard.writeText(questUrl)}
+                      style={{
+                        border: "1px solid rgba(219,230,255,0.2)",
+                        background: "rgba(219,230,255,0.08)",
+                        color: "#dbe6ff",
+                        padding: "8px 10px",
+                        borderRadius: 12,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               <div style={{ marginTop: 8 }}>
                 <button
                   disabled={loading}

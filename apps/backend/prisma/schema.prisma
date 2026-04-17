@@ -43,6 +43,7 @@ model User {
   mediaConsents         MediaConsent[]
   requestedSignatures   Signature[]
   signedUrls            SignedUrl[]
+  deviceMirrorLinks     DeviceMirrorLink[]
 }
 
 model Child {
@@ -76,6 +77,8 @@ model Device {
   room        Room?    @relation(fields: [roomId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  mirrorLinks DeviceMirrorLink[]
 }
 
 model Protocol {
@@ -107,6 +110,7 @@ model Appointment {
 
   session Session?
   viewerLinks ViewerLink[]
+  deviceMirrorLinks DeviceMirrorLink[]
   shorts      ShortClip[]
   reports     SessionReport[]
   mediaConsent MediaConsent?
@@ -181,6 +185,23 @@ model ViewerLink {
   createdBy   User?       @relation(fields: [createdById], references: [id])
 
   @@index([appointmentId, expiresAt])
+}
+
+model DeviceMirrorLink {
+  id            String   @id @default(uuid())
+  token         String   @unique
+  appointmentId String
+  deviceId      String
+  createdById   String?
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  device      Device      @relation(fields: [deviceId], references: [id])
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+
+  @@index([appointmentId, expiresAt])
+  @@index([deviceId, expiresAt])
 }
 
 model ShortClip {

@@ -13,6 +13,7 @@ type Device = {
 };
 
 type DeviceDraft = { name: string; kind: string; serial: string; roomId: string };
+const DEFAULT_DEVICE_KIND = "Meta Quest";
 
 function Panel(props: { title: string; children: React.ReactNode }) {
   return (
@@ -36,7 +37,7 @@ export function DevicesPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [drafts, setDrafts] = useState<Record<string, DeviceDraft>>({});
   const [createName, setCreateName] = useState("");
-  const [createKind, setCreateKind] = useState("");
+  const [createKind, setCreateKind] = useState(DEFAULT_DEVICE_KIND);
   const [createSerial, setCreateSerial] = useState("");
   const [createRoomId, setCreateRoomId] = useState("");
   const [loading, setLoading] = useState(false);
@@ -71,7 +72,7 @@ export function DevicesPage() {
     try {
       await apiFetch<Device>("/devices", { method: "POST", body: JSON.stringify({ name, kind, serial, roomId }) });
       setCreateName("");
-      setCreateKind("");
+      setCreateKind(DEFAULT_DEVICE_KIND);
       setCreateSerial("");
       setCreateRoomId("");
       await refresh();
@@ -124,6 +125,9 @@ export function DevicesPage() {
 
       <Panel title="Novo dispositivo">
         <div style={{ display: "grid", gap: 10, maxWidth: 820 }}>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            Sugestao padrao para espelhamento: use <strong>Meta Quest</strong> como tipo do dispositivo.
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <label style={{ display: "grid", gap: 6, fontSize: 12, opacity: 0.9 }}>
               Nome
@@ -146,7 +150,7 @@ export function DevicesPage() {
               <input
                 value={createKind}
                 onChange={(e) => setCreateKind(e.target.value)}
-                placeholder="Ex.: VR"
+                placeholder="Ex.: Meta Quest"
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
